@@ -26,6 +26,8 @@
 
   <!-- Template Main CSS File -->
   <link href="/css/student-homepage-style.css" rel="stylesheet">
+
+  <script src="/js/logout.js" defer></script>
 </head>
 
 <body>
@@ -78,7 +80,7 @@
               <li><a href="/adminCounselorLog">Summary Of Appointment</a></li>
             </ul>
           </li>
-          <li><a class="getstarted scrollto" href="/">Logout</a></li>
+          <li><a id="logout" class="getstarted scrollto" href="javascript:;">Logout</a></li>
         </ul>
         <i class="bi bi-list mobile-nav-toggle"></i>
       </nav><!-- .navbar -->
@@ -118,11 +120,11 @@
       <tbody>
         <% studentViewAccounts.forEach((item) => { %>
           <tr>
-            <th scope="row"><%= item.email %></th>         
+            <th scope="row"><%= item.email %></th>
             <td><%= item.last_name %> <%= item.first_name %></td>
             <td><%= item.id_number %></td>
             <td><%= item.birth_date %></td>
-            <td><%= item.gender %></td>        
+            <td><%= item.gender %></td>
             <td><%= item.department %></td>
             <td><%= item.phone_number %></td>
           </tr>
@@ -148,11 +150,11 @@
       <tbody>
         <% counselorViewAccounts.forEach((item2) => { %>
           <tr>
-            <th scope="row"><%= item2.email %></th>         
+            <th scope="row"><%= item2.email %></th>
             <td><%= item2.last_name %> <%= item2.first_name %></td>
             <td><%= item2.id_number %></td>
             <td><%= item2.birth_date %></td>
-            <td><%= item2.gender %></td>        
+            <td><%= item2.gender %></td>
             <td><%= item2.phone_number %></td>
           </tr>
         <% }); %>

@@ -28,11 +28,13 @@
   <!-- Template Main CSS File -->
   <link href="/css/student-homepage-style.css" rel="stylesheet">
   <link href="/css/spinner.css" rel="stylesheet">
+
+  <script src="/js/logout.js" defer></script>
 </head>
 
 <body>
    <!-- ======= Top Bar ======= -->
-   
+
    <section id="topbar" class="d-flex align-items-center">
     <div class="container d-flex justify-content-center justify-content-md-between">
       <div class="contact-info d-flex align-items-center">
@@ -74,7 +76,7 @@
                 <li><a href="/studentAppointmentHistory">Appointment History</a></li>
               </ul>
           </li>
-          <li><a class="getstarted scrollto" href="/">Logout</a></li>
+          <li><a id="logout" class="getstarted scrollto" href="javascript:;">Logout</a></li>
         </ul>
         <i class="bi bi-list mobile-nav-toggle"></i>
       </nav><!-- .navbar -->
@@ -94,7 +96,7 @@
             <th scope="col">Counselor</th>
             <th scope="col">Appointed Time</th>
             <th scope="col">Appointed Date</th>
-            <th scope="col">Program Status</th>    
+            <th scope="col">Program Status</th>
           </tr>
         </thead>
         <tbody>

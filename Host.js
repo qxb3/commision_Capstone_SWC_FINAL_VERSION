@@ -4,7 +4,7 @@ const ejs = require('ejs');
 const myapp = express();
 const port = 3030;
 const bcrypt = require('bcryptjs');
-const session = require('express-session');
+const cookieParser = require('cookie-parser')
 
 myapp.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
@@ -13,61 +13,68 @@ myapp.listen(port, () => {
 myapp.use(express.json());
 myapp.use(express.urlencoded({ extended: true }));
 myapp.use(cors());
+myapp.use(cookieParser());
 
 
 myapp.set('view engine', 'ejs');
 myapp.set('views', __dirname + '/view');
 myapp.use(express.static(__dirname + '/assets'));
 
-
-myapp.use(session({
-  secret: 'your_secret_key', 
-  resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false } 
-}));
-
-
-myapp.use((req, res, next) => {
-  const studentData = req.session.studentData; /* Your logic to retrieve student data */;
-  // Pass studentData to all EJS templates
-  res.locals.studentData = studentData;
-  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  res.setHeader("Pragma", "no-cache");
-  res.setHeader("Expires", "0");
-  next();
-});
-
 // Supabase configuration
 const { createClient, SupabaseClient } = require('@supabase/supabase-js');
 const supabase = createClient('https://waeqvekicdlqijxmhclw.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndhZXF2ZWtpY2RscWlqeG1oY2x3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE2OTUyNjMxNjIsImV4cCI6MjAxMDgzOTE2Mn0.8Ga9_qwNgeAKlqWI_xCLQPJFqGha3XfiNMxrT8_RXaM');
 
+async function getUser(type, email) {
+  if (type) {
+    const { data } = await supabase
+      .from(type)
+      .select('*')
+      .eq('email', email?.toUpperCase())
+      .single();
+
+    if (!data && type === 'Student Accounts') return getUser('Counselor Accounts', email)
+    else false
+
+    return data
+  }
+}
+
+myapp.use(async (req, res, next) => {
+  if (req.url.startsWith('/vendor') || req.url.startsWith('/img') || req.url.startsWith('/inactivity.js') || req.url.startsWith('/favicon.ico') || req.url.startsWith('/logout')) return next()
+
+  const studentToken = req.cookies.userData;
+  const studentUser = await supabase.auth.getUser(studentToken)
+  const studentData = await getUser('Student Accounts', studentUser.data?.user?.email)
+
+  res.locals.studentData = studentData;
+  res.locals.counselorData = studentData;
+  next();
+});
 
 
 //=========GETTING===========//
 myapp.get('/', (req, res) => {
-    res.render('LoginPage');
+  res.render('LoginPage');
 });
 
 myapp.get('/Registerpage', (req, res) => {
-  
   res.render('RegisterPage');
 });
 
 myapp.get('/StudentHomepage', (req, res) => {
-  const studentData = req.session.studentData;
+  const studentData = res.locals.studentData;
   res.render('StudentHomepage', { studentData });
 });
 
 myapp.get('/studentProfilePage', (req, res) => {
-  const studentData = req.session.studentData;
+  const studentData = res.locals.studentData;
   res.render('studentProfilePage', { studentData });
 });
 
 myapp.get('/studentAppointmentStatus', async (req, res) => {
   try {
     // Extract counselor's email from the session data
-    const studentData = req.session.studentData;
+    const studentData = res.locals.studentData;
     const studentEmail = studentData.email; // Assuming the email is stored in counselorData
 
     // Fetch pending appointments data for all departments associated with the counselor
@@ -107,7 +114,7 @@ myapp.get('/studentAppointmentStatus', async (req, res) => {
 myapp.get('/studentAppointmentHistory', async (req, res) => {
   try {
     // Extract counselor's email from the session data
-    const studentData = req.session.studentData;
+    const studentData = res.locals.studentData;
     const studentEmail = studentData.email;  // Assuming the email is stored in counselorData
 
     // Fetch pending appointments data for all departments associated with the counselor
@@ -151,132 +158,14 @@ myapp.get('/CounselorList', (req, res) => {
 });
 
 myapp.get('/CreateAppointmentPage', (req, res) => {
-  const studentData = req.session.studentData;
+  const studentData = res.locals.studentData;
   res.render('CreateAppointmentPage', { studentData });
 });
 
 myapp.get('/CounselorHomePage',async (req, res) => {
-    let hasNewAppointments;
-    try {
-      const counselorData = req.session.counselorData;
-      const counselorEmail = counselorData.email;
-  
-      // Fetch counselor's departments
-      const { data: counselorDepartments, error: counselorError } = await supabase
-        .from('Counselor Role')
-        .select('department')
-        .eq('email', counselorEmail);
-  
-      if (counselorError) {
-        console.error('Error fetching counselor departments:', counselorError.message);
-        return res.status(500).send('Internal server error');
-      }
-  
-      const departments = counselorDepartments.map(entry => entry.department);
-  
-      // Fetch new appointments
-      const { data: newAppointments, error: newAppointmentsError } = await supabase
-        .from('Pending Appointment')
-        .select('*')
-        .in('department', departments)
-        .eq('notif', true)
-        .order('date', { ascending: true });
-  
-      if (newAppointmentsError) {
-        console.error('Error fetching new appointments:', newAppointmentsError.message);
-  console.log('Has new appointments:', newAppointments);
-        return res.status(500).send('Internal server error');
-      }
-      else{
-  console.log('Has new appointments:', newAppointments);
-      }
-  
-      hasNewAppointments = newAppointments.length > 0;
-  
-      // Fetch all pending appointments
-      const { data: pendingAppointments, error } = await supabase
-        .from('Pending Appointment')
-        .select('*')
-        .in('department', departments)
-        .order('date', { ascending: true });
-  
-      if (error) {
-        console.error('Error fetching pending appointments:', error.message);
-        return res.status(500).send('Internal server error');
-      }
-  
-  
-      const currentTime = new Date();
-      const updatedPendingAppointments = [];
-  
-      // Loop through pending appointments
-      for (const appointment of pendingAppointments) {
-        const appointedDateTime = new Date(`${appointment.appointed_date} ${appointment.appointed_time}`);
-        
-        if (currentTime > appointedDateTime) {
-          // Prepare data for 'Appointment History' with REJECTED status
-          const rejectedAppointmentData = {
-            counselor_email: counselorEmail,
-            counselor_Fname: counselorData.first_name,
-            counselor_Lname: counselorData.last_name,
-            date: appointment.appointed_date,
-            time: appointment.appointed_time,
-            email: appointment.email,
-            department: appointment.department,
-            first_name: appointment.first_name,
-            last_name: appointment.last_name,
-            appointed_date: appointment.appointed_date,
-            appointed_time: appointment.appointed_time,
-            prog_status: 'IGNORED'
-            // Add other fields needed for the Appointment History table
-          };
-  
-          // Insert rejected appointment in the 'Appointment History' table
-          const { data: insertedAppointment, error: insertError } = await supabase
-            .from('Appointment History')
-            .insert(rejectedAppointmentData);
-  
-          if (insertError) {
-            console.error('Error inserting rejected appointment:', insertError.message);
-            // Handle the error if insertion fails
-          }
-  
-          // Delete the rejected appointment from 'Pending Appointment'
-          const { error: deleteError } = await supabase
-            .from('Pending Appointment')
-            .delete()
-            .eq('id', appointment.id);
-  
-          if (deleteError) {
-            console.error('Error deleting expired appointment:', deleteError.message);
-            // Handle the error if deletion fails
-          }
-        } else {
-          // Appointment is still pending, add it to the updated list
-          updatedPendingAppointments.push(appointment);
-          console.log('Pending Appointments:', updatedPendingAppointments);
-  
-        }
-      }
-  
-      const pendingAppointmentsCount = newAppointments.length;
-      res.render('CounselorHomePage', { counselorData, pendingAppointments: updatedPendingAppointments, hasNewAppointments: hasNewAppointments, pendingAppointmentsCount:pendingAppointmentsCount });
-    } catch (error) {
-      
-      console.error('Server error:', error.message);
-      res.status(500).send('Internal server error');
-    }
-  });
-
-myapp.get('/CounselorProfilePage', (req, res) => {
-  const counselorData = req.session.counselorData;
-  res.render('CounselorProfilePage', { counselorData });
-});
-
-myapp.get('/CounselorPendingAppointmentPage', async (req, res) => {
   let hasNewAppointments;
   try {
-    const counselorData = req.session.counselorData;
+    const counselorData = res.locals.counselorData;
     const counselorEmail = counselorData.email;
 
     // Fetch counselor's departments
@@ -302,11 +191,11 @@ myapp.get('/CounselorPendingAppointmentPage', async (req, res) => {
 
     if (newAppointmentsError) {
       console.error('Error fetching new appointments:', newAppointmentsError.message);
-console.log('Has new appointments:', newAppointments);
+      console.log('Has new appointments:', newAppointments);
       return res.status(500).send('Internal server error');
     }
     else{
-console.log('Has new appointments:', newAppointments);
+      console.log('Has new appointments:', newAppointments);
     }
 
     hasNewAppointments = newAppointments.length > 0;
@@ -330,7 +219,7 @@ console.log('Has new appointments:', newAppointments);
     // Loop through pending appointments
     for (const appointment of pendingAppointments) {
       const appointedDateTime = new Date(`${appointment.appointed_date} ${appointment.appointed_time}`);
-      
+
       if (currentTime > appointedDateTime) {
         // Prepare data for 'Appointment History' with REJECTED status
         const rejectedAppointmentData = {
@@ -372,7 +261,125 @@ console.log('Has new appointments:', newAppointments);
       } else {
         // Appointment is still pending, add it to the updated list
         updatedPendingAppointments.push(appointment);
-        console.log('Pending Appointments:', updatedPendingAppointments);
+        // console.log('Pending Appointments:', updatedPendingAppointments);
+
+      }
+    }
+
+    const pendingAppointmentsCount = newAppointments.length;
+    res.render('CounselorHomePage', { counselorData, pendingAppointments: updatedPendingAppointments, hasNewAppointments: hasNewAppointments, pendingAppointmentsCount:pendingAppointmentsCount });
+  } catch (error) {
+
+    console.error('Server error:', error.message);
+    res.status(500).send('Internal server error');
+  }
+});
+
+myapp.get('/CounselorProfilePage', (req, res) => {
+  const counselorData = res.locals.counselorData;
+  res.render('CounselorProfilePage', { counselorData });
+});
+
+myapp.get('/CounselorPendingAppointmentPage', async (req, res) => {
+  let hasNewAppointments;
+  try {
+    const counselorData = res.locals.counselorData;
+    const counselorEmail = counselorData.email;
+
+    // Fetch counselor's departments
+    const { data: counselorDepartments, error: counselorError } = await supabase
+      .from('Counselor Role')
+      .select('department')
+      .eq('email', counselorEmail);
+
+    if (counselorError) {
+      console.error('Error fetching counselor departments:', counselorError.message);
+      return res.status(500).send('Internal server error');
+    }
+
+    const departments = counselorDepartments.map(entry => entry.department);
+
+    // Fetch new appointments
+    const { data: newAppointments, error: newAppointmentsError } = await supabase
+      .from('Pending Appointment')
+      .select('*')
+      .in('department', departments)
+      .eq('notif', true)
+      .order('date', { ascending: true });
+
+    if (newAppointmentsError) {
+      console.error('Error fetching new appointments:', newAppointmentsError.message);
+      console.log('Has new appointments:', newAppointments);
+      return res.status(500).send('Internal server error');
+    }
+    else{
+      console.log('Has new appointments:', newAppointments);
+    }
+
+    hasNewAppointments = newAppointments.length > 0;
+
+    // Fetch all pending appointments
+    const { data: pendingAppointments, error } = await supabase
+      .from('Pending Appointment')
+      .select('*')
+      .in('department', departments)
+      .order('date', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching pending appointments:', error.message);
+      return res.status(500).send('Internal server error');
+    }
+
+
+    const currentTime = new Date();
+    const updatedPendingAppointments = [];
+
+    // Loop through pending appointments
+    for (const appointment of pendingAppointments) {
+      const appointedDateTime = new Date(`${appointment.appointed_date} ${appointment.appointed_time}`);
+
+      if (currentTime > appointedDateTime) {
+        // Prepare data for 'Appointment History' with REJECTED status
+        const rejectedAppointmentData = {
+          counselor_email: counselorEmail,
+          counselor_Fname: counselorData.first_name,
+          counselor_Lname: counselorData.last_name,
+          date: appointment.appointed_date,
+          time: appointment.appointed_time,
+          email: appointment.email,
+          department: appointment.department,
+          first_name: appointment.first_name,
+          last_name: appointment.last_name,
+          appointed_date: appointment.appointed_date,
+          appointed_time: appointment.appointed_time,
+          prog_status: 'IGNORED'
+          // Add other fields needed for the Appointment History table
+        };
+
+        // Insert rejected appointment in the 'Appointment History' table
+        const { data: insertedAppointment, error: insertError } = await supabase
+          .from('Appointment History')
+          .insert(rejectedAppointmentData);
+
+        if (insertError) {
+          console.error('Error inserting rejected appointment:', insertError.message);
+          // Handle the error if insertion fails
+        }
+
+        // Delete the rejected appointment from 'Pending Appointment'
+        const { error: deleteError } = await supabase
+          .from('Pending Appointment')
+          .delete()
+          .eq('id', appointment.id);
+
+        if (deleteError) {
+          console.error('Error deleting expired appointment:', deleteError.message);
+          // Handle the error if deletion fails
+        }
+      } else {
+        // Appointment is still pending, add it to the updated list
+        updatedPendingAppointments.push(appointment);
+        // console.log('Pending Appointments:', updatedPendingAppointments);
 
       }
     }
@@ -383,20 +390,20 @@ console.log('Has new appointments:', newAppointments);
         .from('Pending Appointment')
         .update({ notif: false })
         .eq('id', appointment.id);
-        
+
 
       if (updateError) {
         console.error('Error updating appointment status:', updateError.message);
         // Handle the error if the update fails
       }
       else {
-        console.log('Pending Appointments:', updatedPendingAppointments);
+        // console.log('Pending Appointments:', updatedPendingAppointments);
       }
     }
 
     res.render('CounselorPendingAppointmentPage', { counselorData, pendingAppointments: updatedPendingAppointments, hasNewAppointments: hasNewAppointments, });
   } catch (error) {
-    
+
     console.error('Server error:', error.message);
     res.status(500).send('Internal server error');
   }
@@ -406,7 +413,7 @@ console.log('Has new appointments:', newAppointments);
 myapp.get('/CounselorAcceptedAppointmentPage', async (req, res) => {
   try {
     // Extract counselor's email from the session data
-    const counselorData = req.session.counselorData;
+    const counselorData = res.locals.counselorData;
     const counselorEmail = counselorData.email; // Assuming the email is stored in counselorData
 
     // Fetch pending appointments data for all departments associated with the counselor
@@ -433,7 +440,7 @@ myapp.get('/CounselorAcceptedAppointmentPage', async (req, res) => {
 myapp.get('/CounselorAppointmentHistoryPage', async (req, res) => {
   try {
     // Extract counselor's email from the session data
-    const counselorData = req.session.counselorData;
+    const counselorData = res.locals.counselorData;
     const counselorEmail = counselorData.email; // Assuming the email is stored in counselorData
 
     // Fetch pending appointments data for all departments associated with the counselor
@@ -459,7 +466,7 @@ myapp.get('/CounselorAppointmentHistoryPage', async (req, res) => {
 
 myapp.get('/CounselorLogs', async (req, res) => {
   try {
-    const counselorData = req.session.counselorData;
+    const counselorData = res.locals.counselorData;
     const counselorEmail = counselorData.email;
     const { data: counselorLog, error } = await supabase
       .from('Report')
@@ -481,21 +488,21 @@ myapp.get('/CounselorLogs', async (req, res) => {
 });
 
 myapp.get('/CounselorReport', (req, res) => {
-  const counselorData = req.session.counselorData;
+  const counselorData = res.locals.counselorData;
   res.render('CounselorReport', { counselorData });
 });
 
 myapp.get('/emailSuggestions', async (req, res) => {
   const userInput = req.query.input; 
   const { data: suggestedEmails, error } = await supabase
-      .from('Student Accounts')
-      .select('*')
-      .ilike('email', `%${userInput}%`);
+    .from('Student Accounts')
+    .select('*')
+    .ilike('email', `%${userInput}%`);
 
   if (error) {
-      // Handle error, if necessary
-      console.error('Error fetching student data:', error);
-      return res.status(500).json({ error: 'Error fetching suggestions' });
+    // Handle error, if necessary
+    console.error('Error fetching student data:', error);
+    return res.status(500).json({ error: 'Error fetching suggestions' });
   }
 
   res.json({ suggestions: suggestedEmails });
@@ -643,7 +650,7 @@ myapp.get('/adminHomepage', (req, res) => {
 
 
 
-// REGISTRATION
+  // REGISTRATION
 myapp.post('/register', async (req, res) => {
   const { idNumber, email, password, lastName, firstName, gender, birthDate, phoneNumber, accountType, departmentSelect } = req.body;
 
@@ -681,74 +688,75 @@ myapp.post('/register', async (req, res) => {
       res.status(500).json({ error: 'Registration failed' });
       return;
     }
-    
+
     // SEPERATE
     if (accountType === 'Student') {   
-    // INSERT
-    const { data: userData, error: userError } = await supabase
-    .from('Student Accounts')
-    .insert([
-      {
-        first_name: uppercaseFirstName,
-        last_name: uppercaseLastName,
-        birth_date: birthDate,
-        gender: uppercaseGender,
-        email: uppercaseEmail,
-        password: hashedPassword, 
-        id_number: uppercaseIDNumber,
-        phone_number: phoneNumber,
-        accountType: uppercaseAccountType,
-        department:departmentSelect
-      },
-    ])
-    .single();
+      // INSERT
+      const { data: userData, error: userError } = await supabase
+        .from('Student Accounts')
+        .insert([
+          {
+            first_name: uppercaseFirstName,
+            last_name: uppercaseLastName,
+            birth_date: birthDate,
+            gender: uppercaseGender,
+            email: uppercaseEmail,
+            password: hashedPassword, 
+            id_number: uppercaseIDNumber,
+            phone_number: phoneNumber,
+            accountType: uppercaseAccountType,
+            department:departmentSelect
+          },
+        ])
+        .single();
 
-  if (error) {
-    if (error.message.includes('duplicate key value violates unique constraint')) {
-      // Handle the case where the email is already registered
-      res.status(400).json({ error: 'The email is already registered. Please log in or reset your password if you forgot it.' });
-    } else {
-      console.error('Error registering user:', error.message);
-      res.status(500).json({ error: 'Registration failed' });
-    }
-    return;
-  }
+
+      if (error) {
+        if (error.message.includes('duplicate key value violates unique constraint')) {
+          // Handle the case where the email is already registered
+          res.status(400).json({ error: 'The email is already registered. Please log in or reset your password if you forgot it.' });
+        } else {
+          console.error('Error registering user:', error.message);
+          res.status(500).json({ error: 'Registration failed' });
+        }
+        return;
+      }
     } else if (accountType === 'Counselor') {
       // INSERT
-    const { data: userData, error: userError } = await supabase
-    .from('Counselor Accounts')
-    .insert([
-      {
-        first_name: uppercaseFirstName,
-        last_name: uppercaseLastName,
-        birth_date: birthDate,
-        gender: uppercaseGender,
-        email: uppercaseEmail,
-        password: hashedPassword, 
-        id_number: uppercaseIDNumber,
-        phone_number: phoneNumber,
-        accountType: uppercaseAccountType,
-        
-      },
-    ])
-    .single();
+      const { data: userData, error: userError } = await supabase
+        .from('Counselor Accounts')
+        .insert([
+          {
+            first_name: uppercaseFirstName,
+            last_name: uppercaseLastName,
+            birth_date: birthDate,
+            gender: uppercaseGender,
+            email: uppercaseEmail,
+            password: hashedPassword, 
+            id_number: uppercaseIDNumber,
+            phone_number: phoneNumber,
+            accountType: uppercaseAccountType,
 
-  if (error) {
-    if (error.message.includes('duplicate key value violates unique constraint')) {
-      // Handle the case where the email is already registered
-      res.status(400).json({ error: 'The email is already registered. Please log in or reset your password if you forgot it.' });
-    } else {
-      console.error('Error registering user:', error.message);
-      res.status(500).json({ error: 'Registration failed' });
-    }
-    return;
-  }
+          },
+        ])
+        .single();
+
+      if (error) {
+        if (error.message.includes('duplicate key value violates unique constraint')) {
+          // Handle the case where the email is already registered
+          res.status(400).json({ error: 'The email is already registered. Please log in or reset your password if you forgot it.' });
+        } else {
+          console.error('Error registering user:', error.message);
+          res.status(500).json({ error: 'Registration failed' });
+        }
+        return;
+      }
     }
 
 
     res.status(200).json({ success: 'Registration successful' });
 
-    
+
   } catch (e) {
     console.error('Unexpected error:', e);
     res.status(500).json({ error: 'Registration failed' });
@@ -760,10 +768,11 @@ myapp.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    const { data, loginError } = await supabase.auth.signInWithPassword({
+    const { data, error: loginError } = await supabase.auth.signInWithPassword({
       email,
       password
     });
+
 
     if (loginError) {
       console.error('Error logging in:', loginError.message);
@@ -776,46 +785,46 @@ myapp.post('/login', async (req, res) => {
       res.status(401).json({ error: 'Authentication failed' });
       return;
     }
-    console.log(data || data.userData);
 
-      // Fetch the student data from the specific table
-      const { data: studentData, error: studentError } = await supabase
-        .from('Student Accounts')
-        .select('*')
-        .eq('email', email.toUpperCase())
-        .single();
-
-        // Check if the user is a student
-        if (studentData) {
-          console.log(studentData);
-          
-        // Store the student data in the session
-        req.session.studentData = studentData;
-        res.status(200).json({ success: 'Login successful', accountType: 'Student' });
-        return;
-
-    }
-    else {
-    // Fetch the counselor data from the specific table
-    const { data: counselorData, error: counselorError } = await supabase
-      .from('Counselor Accounts')
+    // Fetch the student data from the specific table
+    const { data: studentData, error: studentError } = await supabase
+      .from('Student Accounts')
       .select('*')
       .eq('email', email.toUpperCase())
       .single();
 
+    // Check if the user is a student
+    if (studentData) {
+      // Store the student data in the session
+      res.cookie('userData', data.session.access_token, {
+        httpOnly: true
+      })
+
+      res
+        .status(200)
+        .json({ success: 'Login successful', accountType: 'Student' });
+      return;
+
+    } else {
+      // Fetch the counselor data from the specific table
+      const { data: counselorData, error: counselorError } = await supabase
+        .from('Counselor Accounts')
+        .select('*')
+        .eq('email', email.toUpperCase())
+        .single();
+
       // Check if the user is a counselor
-    if (counselorData) {
-      console.log(counselorData);
-      // Store the counselor data in the session
-      req.session.counselorData = counselorData;
-      // Redirect to the counselor homepage
-      res.status(200).json({ success: 'Login successful', accountType: 'Counselor' });
+      if (counselorData) {
+        res.cookie('userData', data.session.access_token, {
+          httpOnly: true
+        })
+        res.status(200).json({ success: 'Login successful', accountType: 'Counselor' });
         return;
-    }
-     else 
-     {console.error('User data not found');
-     res.status(404).json({ error: 'User not found' });
-    }
+      }
+      else 
+      {console.error('User data not found');
+        res.status(404).json({ error: 'User not found' });
+      }
 
     }
   } catch (e) {
@@ -824,35 +833,46 @@ myapp.post('/login', async (req, res) => {
   }
 });
 
+myapp.post('/logout', async (req, res) => {
+  const { error } = await supabase.auth.signOut()
+
+  if (!error) {
+    res.clearCookie('userData')
+      .json({ message: 'Logout', status: 200 })
+  } else {
+    res.json({ message: error, status: 500 })
+  }
+})
+
 // APPOINTMENT
 myapp.post('/create-appointment', async (req, res) => {
   try {
     // Access session data, such as email and first name
-    const userEmail = req.session.studentData.email;
-    const userFirstName = req.session.studentData.first_name;
-    const userLastName = req.session.studentData.last_name;
-    const department = req.session.studentData.department;
+    const userEmail = res.locals.studentData.email;
+    const userFirstName = res.locals.studentData.first_name;
+    const userLastName = res.locals.studentData.last_name;
+    const department = res.locals.studentData.department;
     const appointmentDate = req.body.date;
     const appointmentTime = req.body.time;
     const service = req.body.service;
 
-   // Get the current date and time when the "appoint" button is clicked in the Philippines Time Zone (Asia/Manila)
-   const appointmentDateTime = new Date();
-   const options = {
-    timeZone: 'Asia/Manila',
-    hour12: false, // Use 24-hour format
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  };
+    // Get the current date and time when the "appoint" button is clicked in the Philippines Time Zone (Asia/Manila)
+    const appointmentDateTime = new Date();
+    const options = {
+      timeZone: 'Asia/Manila',
+      hour12: false, // Use 24-hour format
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    };
 
-  // Format the time in the desired time zone
-  const appointmentTimeStr = appointmentDateTime.toLocaleString('en-US', options);
+    // Format the time in the desired time zone
+    const appointmentTimeStr = appointmentDateTime.toLocaleString('en-US', options);
 
-  // Extract the date component
-  const appointmentDateStr = appointmentDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
-    
-  const { data, error } = await supabase
+    // Extract the date component
+    const appointmentDateStr = appointmentDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
+
+    const { data, error } = await supabase
       .from('Pending Appointment')
       .upsert([
         {
@@ -889,16 +909,16 @@ myapp.post('/create-appointment', async (req, res) => {
 myapp.post('/studentCancelAppointment/:appointmentId', async (req, res) => {
   try {
     const appointmentId = req.params.appointmentId;  
-   const appointmentDateTime = new Date();
-   const options = {
-    timeZone: 'Asia/Manila',
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  };
-  const appointmentTimeStr = appointmentDateTime.toLocaleString('en-US', options);
-  const appointmentDateStr = appointmentDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
+    const appointmentDateTime = new Date();
+    const options = {
+      timeZone: 'Asia/Manila',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    };
+    const appointmentTimeStr = appointmentDateTime.toLocaleString('en-US', options);
+    const appointmentDateStr = appointmentDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
 
     // Retrieve appointment details from 'Pending Appointment' based on appointmentId
     const { data: appointmentData, error: appointmentError } = await supabase
@@ -944,7 +964,7 @@ myapp.post('/studentCancelAppointment/:appointmentId', async (req, res) => {
       return res.status(500).send('Failed to cancel the appointment');
     }
 
-  // Remove the appointment from 'Pending Appointment' after moving it to 'Accepted Appointment'
+    // Remove the appointment from 'Pending Appointment' after moving it to 'Accepted Appointment'
     const { error: deleteError } = await supabase
       .from('Pending Appointment')
       .delete()
@@ -966,61 +986,61 @@ myapp.post('/updateDepartments', async (req, res) => {
   const { email, departments } = req.body;
 
   try {
-      // Fetch existing user departments from the database
-      const { data: existingDepartments, error: existingError } = await supabase
-          .from('Counselor Role')
-          .select('department')
-          .eq('email', email);
+    // Fetch existing user departments from the database
+    const { data: existingDepartments, error: existingError } = await supabase
+      .from('Counselor Role')
+      .select('department')
+      .eq('email', email);
 
-      if (existingError) {
-          throw existingError;
-      }
+    if (existingError) {
+      throw existingError;
+    }
 
-      // Extract existing department names from the result
-      const existingDepartmentNames = existingDepartments.map(dept => dept.department);
+    // Extract existing department names from the result
+    const existingDepartmentNames = existingDepartments.map(dept => dept.department);
 
-      // Determine departments to delete and insert
-      const departmentsToDelete = existingDepartmentNames.filter(dept => !departments.includes(dept));
-      const departmentsToInsert = departments.filter(dept => !existingDepartmentNames.includes(dept));
+    // Determine departments to delete and insert
+    const departmentsToDelete = existingDepartmentNames.filter(dept => !departments.includes(dept));
+    const departmentsToInsert = departments.filter(dept => !existingDepartmentNames.includes(dept));
 
-      // Perform deletion and insertion
-      await supabase
-          .from('Counselor Role')
-          .delete()
-          .eq('email', email)
-          .in('department', departmentsToDelete);
+    // Perform deletion and insertion
+    await supabase
+      .from('Counselor Role')
+      .delete()
+      .eq('email', email)
+      .in('department', departmentsToDelete);
 
-      await supabase
-          .from('Counselor Role')
-          .insert(
-              departmentsToInsert.map(dept => ({ email, department: dept }))
-          );
+    await supabase
+      .from('Counselor Role')
+      .insert(
+        departmentsToInsert.map(dept => ({ email, department: dept }))
+      );
 
-      res.status(200).json({ message: 'Departments updated successfully' });
+    res.status(200).json({ message: 'Departments updated successfully' });
   } catch (error) {
-      console.error('Error:', error);
-      res.status(500).json({ error: 'Failed to update departments' });
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Failed to update departments' });
   }
 });
 
 myapp.post('/acceptAppointment/:appointmentId', async (req, res) => {
   try {
-    const counselorData = req.session.counselorData;
+    const counselorData = res.locals.counselorData;
     const counselorEmail = counselorData.email;
     const counselorFName= counselorData.first_name;
     const counselorLName= counselorData.last_name;
     const appointmentId = req.params.appointmentId;  
     const remarks = req.body.remarks;
-   const appointmentDateTime = new Date();
-   const options = {
-    timeZone: 'Asia/Manila',
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  };
-  const appointmentTimeStr = appointmentDateTime.toLocaleString('en-US', options);
-  const appointmentDateStr = appointmentDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
+    const appointmentDateTime = new Date();
+    const options = {
+      timeZone: 'Asia/Manila',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    };
+    const appointmentTimeStr = appointmentDateTime.toLocaleString('en-US', options);
+    const appointmentDateStr = appointmentDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
 
     // Retrieve appointment details from 'Pending Appointment' based on appointmentId
     const { data: appointmentData, error: appointmentError } = await supabase
@@ -1070,7 +1090,7 @@ myapp.post('/acceptAppointment/:appointmentId', async (req, res) => {
       return res.status(500).send('Failed to accept the appointment');
     }
 
-  // Remove the appointment from 'Pending Appointment' after moving it to 'Accepted Appointment'
+    // Remove the appointment from 'Pending Appointment' after moving it to 'Accepted Appointment'
     const { error: deleteError } = await supabase
       .from('Pending Appointment')
       .delete()
@@ -1090,21 +1110,21 @@ myapp.post('/acceptAppointment/:appointmentId', async (req, res) => {
 
 myapp.post('/completeAppointment/:appointmentId', async (req, res) => {
   try {
-    const counselorData = req.session.counselorData;
+    const counselorData = res.locals.counselorData;
     const counselorEmail = counselorData.email;
     const counselorFName= counselorData.first_name;
     const counselorLName= counselorData.last_name;
     const appointmentId = req.params.appointmentId;  
-   const appointmentDateTime = new Date();
-   const options = {
-    timeZone: 'Asia/Manila',
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  };
-  const appointmentTimeStr = appointmentDateTime.toLocaleString('en-US', options);
-  const appointmentDateStr = appointmentDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
+    const appointmentDateTime = new Date();
+    const options = {
+      timeZone: 'Asia/Manila',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    };
+    const appointmentTimeStr = appointmentDateTime.toLocaleString('en-US', options);
+    const appointmentDateStr = appointmentDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
 
     // Retrieve appointment details from 'completed Appointment' based on appointmentId
     const { data: appointmentData, error: appointmentError } = await supabase
@@ -1153,7 +1173,7 @@ myapp.post('/completeAppointment/:appointmentId', async (req, res) => {
       return res.status(500).send('Failed to cancel the appointment');
     }
 
-  // Remove the appointment from 'completed Appointment' after moving it to 'Accepted Appointment'
+    // Remove the appointment from 'completed Appointment' after moving it to 'Accepted Appointment'
     const { error: deleteError } = await supabase
       .from('Accepted Appointment')
       .delete()
@@ -1173,22 +1193,22 @@ myapp.post('/completeAppointment/:appointmentId', async (req, res) => {
 
 myapp.post('/rejectAppointment/:appointmentId', async (req, res) => {
   try {
-    const counselorData = req.session.counselorData;
+    const counselorData = res.locals.counselorData;
     const counselorEmail = counselorData.email;
     const counselorFName= counselorData.first_name;
     const counselorLName= counselorData.last_name;
     const appointmentId = req.params.appointmentId;  
     const remarks = req.body.remarks;
-   const appointmentDateTime = new Date();
-   const options = {
-    timeZone: 'Asia/Manila',
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  };
-  const appointmentTimeStr = appointmentDateTime.toLocaleString('en-US', options);
-  const appointmentDateStr = appointmentDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
+    const appointmentDateTime = new Date();
+    const options = {
+      timeZone: 'Asia/Manila',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    };
+    const appointmentTimeStr = appointmentDateTime.toLocaleString('en-US', options);
+    const appointmentDateStr = appointmentDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
 
     // Retrieve appointment details from 'Pending Appointment' based on appointmentId
     const { data: appointmentData, error: appointmentError } = await supabase
@@ -1238,7 +1258,7 @@ myapp.post('/rejectAppointment/:appointmentId', async (req, res) => {
       return res.status(500).send('Failed to reject the appointment');
     }
 
-  // Remove the appointment from 'Pending Appointment' after moving it to 'Accepted Appointment'
+    // Remove the appointment from 'Pending Appointment' after moving it to 'Accepted Appointment'
     const { error: deleteError } = await supabase
       .from('Pending Appointment')
       .delete()
@@ -1258,22 +1278,22 @@ myapp.post('/rejectAppointment/:appointmentId', async (req, res) => {
 
 myapp.post('/cancelAppointment/:appointmentId', async (req, res) => {
   try {
-    const counselorData = req.session.counselorData;
+    const counselorData = res.locals.counselorData;
     const counselorEmail = counselorData.email;
     const counselorFName= counselorData.first_name;
     const counselorLName= counselorData.last_name;
     const appointmentId = req.params.appointmentId; 
     const remarks = req.body.remarks; 
-   const appointmentDateTime = new Date();
-   const options = {
-    timeZone: 'Asia/Manila',
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  };
-  const appointmentTimeStr = appointmentDateTime.toLocaleString('en-US', options);
-  const appointmentDateStr = appointmentDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
+    const appointmentDateTime = new Date();
+    const options = {
+      timeZone: 'Asia/Manila',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    };
+    const appointmentTimeStr = appointmentDateTime.toLocaleString('en-US', options);
+    const appointmentDateStr = appointmentDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
 
     // Retrieve appointment details from 'Pending Appointment' based on appointmentId
     const { data: appointmentData, error: appointmentError } = await supabase
@@ -1323,7 +1343,7 @@ myapp.post('/cancelAppointment/:appointmentId', async (req, res) => {
       return res.status(500).send('Failed to cancel the appointment');
     }
 
-  // Remove the appointment from 'Pending Appointment' after moving it to 'Accepted Appointment'
+    // Remove the appointment from 'Pending Appointment' after moving it to 'Accepted Appointment'
     const { error: deleteError } = await supabase
       .from('Accepted Appointment')
       .delete()
@@ -1345,59 +1365,59 @@ myapp.post('/counselorEncoding', async (req, res) => {
   const { student_Email, student_fname, student_lname, department, progCode, schoolYear, typeOfService, natureOfConcern, categoryType, counselingClient, sessionName,notes } = req.body;
   try {
     // Access session data, such as email and first name
-    const userEmail = req.session.counselorData.email;
-    const userFirstName = req.session.counselorData.first_name;
-    const userLastName = req.session.counselorData.last_name;
-    
-    
-   // Get the current date and time when the "appoint" button is clicked in the Philippines Time Zone (Asia/Manila)
-   const encodedDateTime = new Date();
-   const options = {
-    timeZone: 'Asia/Manila',
-    hour12: false, // Use 24-hour format
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  };
-  const encodedTimeStr = encodedDateTime.toLocaleString('en-US', options);
-  const encodedDateStr = encodedDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
+    const userEmail = res.locals.counselorData.email;
+    const userFirstName = res.locals.counselorData.first_name;
+    const userLastName = res.locals.counselorData.last_name;
 
-   const encodeData = {
-    student_email: student_Email.toUpperCase(),
-     student_lname: student_lname.toUpperCase(),
-     student_fname: student_fname.toUpperCase(),
-     school_year: schoolYear,
-     progcode: progCode.toUpperCase(),
-     department: department.toUpperCase(),
-     service: typeOfService.toUpperCase(),
-     category: categoryType.toUpperCase(),
-     concern: natureOfConcern.toUpperCase(),
-     client: counselingClient.toUpperCase(),
-     session: sessionName.toUpperCase(),
-     notes: notes,
-     counselor_email: userEmail,
-     counselor_fname: userFirstName,
-     counselor_lname: userLastName,
-     date_encoded: encodedDateStr,
-     time_encoded: encodedTimeStr,
 
-   };
+    // Get the current date and time when the "appoint" button is clicked in the Philippines Time Zone (Asia/Manila)
+    const encodedDateTime = new Date();
+    const options = {
+      timeZone: 'Asia/Manila',
+      hour12: false, // Use 24-hour format
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    };
+    const encodedTimeStr = encodedDateTime.toLocaleString('en-US', options);
+    const encodedDateStr = encodedDateTime.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
 
-   // Save accepted appointment in the 'Accepted Appointment' table
-   const { data: encodeReport, error: insertError } = await supabase
-     .from('Report')
-     .insert(encodeData);
+    const encodeData = {
+      student_email: student_Email.toUpperCase(),
+      student_lname: student_lname.toUpperCase(),
+      student_fname: student_fname.toUpperCase(),
+      school_year: schoolYear,
+      progcode: progCode.toUpperCase(),
+      department: department.toUpperCase(),
+      service: typeOfService.toUpperCase(),
+      category: categoryType.toUpperCase(),
+      concern: natureOfConcern.toUpperCase(),
+      client: counselingClient.toUpperCase(),
+      session: sessionName.toUpperCase(),
+      notes: notes,
+      counselor_email: userEmail,
+      counselor_fname: userFirstName,
+      counselor_lname: userLastName,
+      date_encoded: encodedDateStr,
+      time_encoded: encodedTimeStr,
 
-   if (insertError) {
-     console.error('Error Encode Report:', insertError.message);
-     return res.status(500).send('Failed to accept the appointment');
-   }
+    };
 
-   res.status(200).json({ message: 'Encoded successfully' });
- } catch (error) {
-   console.error('Server error:', error.message);
-   res.status(500).send('Internal server error');
- }
+    // Save accepted appointment in the 'Accepted Appointment' table
+    const { data: encodeReport, error: insertError } = await supabase
+      .from('Report')
+      .insert(encodeData);
+
+    if (insertError) {
+      console.error('Error Encode Report:', insertError.message);
+      return res.status(500).send('Failed to accept the appointment');
+    }
+
+    res.status(200).json({ message: 'Encoded successfully' });
+  } catch (error) {
+    console.error('Server error:', error.message);
+    res.status(500).send('Internal server error');
+  }
 });
 
 myapp.post('/adminCreateAccount', async (req, res) => {
@@ -1410,8 +1430,8 @@ myapp.post('/adminCreateAccount', async (req, res) => {
   const uppercaseAccountType = accountType.toUpperCase()
   try {
 
-    
-    
+
+
     // SEPERATE
     if (accountType === 'Student') {   
       // Register the user in Supabase
@@ -1420,40 +1440,40 @@ myapp.post('/adminCreateAccount', async (req, res) => {
         password: 'student123'
       });
 
-    if (error) {
-      console.error('Error registering user:', error.message);
-      res.status(500).json({ error: 'Registration failed' });
-      return;
-    }
-    // INSERT
-    const { data: userData, error: userError } = await supabase
-    .from('Student Accounts')
-    .insert([
-      {
-        first_name: uppercaseFirstName,
-        last_name: uppercaseLastName,
-        birth_date: birthDate,
-        gender: uppercaseGender,
-        email: uppercaseEmail,
-        password: 'student123', 
-        id_number: uppercaseIDNumber,
-        phone_number: phoneNumber,
-        accountType: uppercaseAccountType,
-        department:departmentSelect
-      },
-    ])
-    .single();
+      if (error) {
+        console.error('Error registering user:', error.message);
+        res.status(500).json({ error: 'Registration failed' });
+        return;
+      }
+      // INSERT
+      const { data: userData, error: userError } = await supabase
+        .from('Student Accounts')
+        .insert([
+          {
+            first_name: uppercaseFirstName,
+            last_name: uppercaseLastName,
+            birth_date: birthDate,
+            gender: uppercaseGender,
+            email: uppercaseEmail,
+            password: 'student123', 
+            id_number: uppercaseIDNumber,
+            phone_number: phoneNumber,
+            accountType: uppercaseAccountType,
+            department:departmentSelect
+          },
+        ])
+        .single();
 
-  if (error) {
-    if (error.message.includes('duplicate key value violates unique constraint')) {
-      // Handle the case where the email is already registered
-      res.status(400).json({ error: 'The email is already registered. Please log in or reset your password if you forgot it.' });
-    } else {
-      console.error('Error registering user:', error.message);
-      res.status(500).json({ error: 'Registration failed' });
-    }
-    return;
-  }
+      if (error) {
+        if (error.message.includes('duplicate key value violates unique constraint')) {
+          // Handle the case where the email is already registered
+          res.status(400).json({ error: 'The email is already registered. Please log in or reset your password if you forgot it.' });
+        } else {
+          console.error('Error registering user:', error.message);
+          res.status(500).json({ error: 'Registration failed' });
+        }
+        return;
+      }
     } else if (accountType === 'Counselor') {
       // Register the user in Supabase
       const { data, error } = await supabase.auth.signUp({
@@ -1461,47 +1481,47 @@ myapp.post('/adminCreateAccount', async (req, res) => {
         password:'counselor123'
       });
 
-    if (error) {
-      console.error('Error registering user:', error.message);
-      res.status(500).json({ error: 'Registration failed' });
-      return;
-    }
+      if (error) {
+        console.error('Error registering user:', error.message);
+        res.status(500).json({ error: 'Registration failed' });
+        return;
+      }
       // INSERT
-    const { data: userData, error: userError } = await supabase
-    .from('Counselor Accounts')
-    .insert([
-      {
-        first_name: uppercaseFirstName,
-        last_name: uppercaseLastName,
-        birth_date: birthDate,
-        gender: uppercaseGender,
-        email: uppercaseEmail,
-        password: 'counselor123', 
-        id_number: uppercaseIDNumber,
-        phone_number: phoneNumber,
-        accountType: uppercaseAccountType,
-        department:departmentSelect
-        
-      },
-    ])
-    .single();
+      const { data: userData, error: userError } = await supabase
+        .from('Counselor Accounts')
+        .insert([
+          {
+            first_name: uppercaseFirstName,
+            last_name: uppercaseLastName,
+            birth_date: birthDate,
+            gender: uppercaseGender,
+            email: uppercaseEmail,
+            password: 'counselor123', 
+            id_number: uppercaseIDNumber,
+            phone_number: phoneNumber,
+            accountType: uppercaseAccountType,
+            department:departmentSelect
 
-  if (error) {
-    if (error.message.includes('duplicate key value violates unique constraint')) {
-      // Handle the case where the email is already registered
-      res.status(400).json({ error: 'The email is already registered. Please log in or reset your password if you forgot it.' });
-    } else {
-      console.error('Error registering user:', error.message);
-      res.status(500).json({ error: 'Registration failed' });
-    }
-    return;
-  }
+          },
+        ])
+        .single();
+
+      if (error) {
+        if (error.message.includes('duplicate key value violates unique constraint')) {
+          // Handle the case where the email is already registered
+          res.status(400).json({ error: 'The email is already registered. Please log in or reset your password if you forgot it.' });
+        } else {
+          console.error('Error registering user:', error.message);
+          res.status(500).json({ error: 'Registration failed' });
+        }
+        return;
+      }
     }
 
 
     res.status(200).json({ success: 'Registration successful' });
 
-    
+
   } catch (e) {
     console.error('Unexpected error:', e);
     res.status(500).json({ error: 'Registration failed' });

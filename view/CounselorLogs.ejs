@@ -26,13 +26,15 @@
   <!-- Template Main CSS File -->
   <link href="/css/student-homepage-style.css" rel="stylesheet">
   <link href="/css/spinner.css" rel="stylesheet">
+
+  <script src="/js/logout.js" defer></script>
 </head>
 
 <body>
 
   <!-- ======= Top Bar ======= -->
   <section id="topbar" class="d-flex align-items-center">
-    <div class="container d-flex justify-content-center justify-content-md-between">   
+    <div class="container d-flex justify-content-center justify-content-md-between">
       <div class="contact-info d-flex align-items-center">
         <i class="bi bi-envelope-fill"></i><a href="mailto:contact@example.com">info@example.com</a>
         <i class="bi bi-phone-fill phone-icon"></i> +1 5589 55488 55
@@ -77,7 +79,7 @@
             </ul>
           </li>
           <li><a class="nav-link scrollto " href="#portfolio">Messages</a></li>
-          <li><a class="getstarted scrollto" href="/">Logout</a></li>
+          <li><a id="logout" class="getstarted scrollto" href="javascript:;">Logout</a></li>
         </ul>
         <i class="bi bi-list mobile-nav-toggle"></i>
       </nav><!-- .navbar -->
@@ -128,9 +130,9 @@
       </table>
     </div>
   </main>
-  
 
-  
+
+
 
   <!-- ======= Footer ======= -->
   <footer id="footer">

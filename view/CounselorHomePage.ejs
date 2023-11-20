@@ -27,6 +27,8 @@
   <!-- Template Main CSS File -->
   <link href="/css/student-homepage-style.css" rel="stylesheet">
   <link href="/css/spinner.css" rel="stylesheet">
+
+  <script src="/js/logout.js" defer></script>
 </head>
 
 <body>
@@ -80,7 +82,7 @@
                   Pending Appointments
                   <span class="badge rounded-pill badge-notification bg-danger">
                     <%= pendingAppointmentsCount > 0 ? pendingAppointmentsCount : '' %>
-                    
+
                   </span>
                 </a>
               </li>
@@ -94,7 +96,7 @@
               <li><a href="/CounselorReport">Report</a></li>
             </ul>
           </li>
-          <li><a class="getstarted scrollto" href="/">Logout</a></li>
+          <li><a id="logout" class="getstarted" href="javascript:;">Logout</a></li>
         </ul>
         <i class="bi bi-list mobile-nav-toggle"></i>
       </nav><!-- .navbar -->
@@ -159,7 +161,7 @@
 
   <main id="main">
 
-   
+
 
     <!-- ======= About Us Section ======= -->
     <section id="about" class="about">
@@ -176,7 +178,7 @@
           </div>
           <div class="col-lg-6 pt-4 pt-lg-0 order-2 order-lg-1 content">
             <h3>Vision</h3>
-      
+
             <ul>
               <li><i class="bi bi-check-circled"></i> Lasallian students who have fuller appreciation of their potentials, strengths, resources and sense of agency.</li>
               <h3>Mission</h3>

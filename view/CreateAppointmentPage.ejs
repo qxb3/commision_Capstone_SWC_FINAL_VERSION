@@ -32,6 +32,8 @@
   <!-- Template Main CSS File -->
   <link href="/css/tableAppointment.css" rel="stylesheet">
   <link href="/css/spinner.css" rel="stylesheet">
+
+  <script src="/js/logout.js" defer></script>
 </head>
 
 <body>
@@ -84,7 +86,7 @@
               <li><a href="/studentAppointmentHistory">Appointment History</a></li>
             </ul>
           </li>
-          <li><a class="getstarted scrollto" href="/">Logout</a></li>
+          <li><a id="logout" class="getstarted scrollto" href="javascript:;">Logout</a></li>
         </ul>
         <i class="bi bi-list mobile-nav-toggle"></i>
       </nav><!-- .navbar -->
@@ -235,7 +237,7 @@
   <script src="/js/spinner.js"></script>
   <!-- Insert new Appointment Record JS -->
   <script src="/js/create-appointment-page.js"></script>
-  
+
   <div class="loader"></div>
 </body>
 

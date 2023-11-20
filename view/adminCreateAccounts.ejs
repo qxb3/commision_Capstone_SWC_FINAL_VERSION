@@ -26,6 +26,8 @@
 
   <!-- Template Main CSS File -->
   <link href="/css/student-homepage-style.css" rel="stylesheet">
+
+  <script src="/js/logout.js" defer></script>
 </head>
 
 <body>
@@ -78,7 +80,7 @@
               <li><a href="/adminCounselorLog">Summary Of Appointment</a></li>
             </ul>
           </li>
-          <li><a class="getstarted scrollto" href="/">Logout</a></li>
+          <li><a id="logout" class="getstarted scrollto" href="javascript:;">Logout</a></li>
         </ul>
         <i class="bi bi-list mobile-nav-toggle"></i>
       </nav><!-- .navbar -->
@@ -110,7 +112,7 @@
                   </div>
                 </div>
               </div>
-  
+
               <div class="row mb-4">
                 <div class="col-md-6">
                   <div class="form-outline">
@@ -130,7 +132,7 @@
                   </div>
                 </div>
               </div>
-  
+
               <div class="row mb-4">
                 <div class="col-md-6">
                   <div class="form-outline">
@@ -152,7 +154,7 @@
                   </div>
                 </div>
               </div>
-  
+
               <div class="row">
                 <div class="col-12">
                   <select id="accountType" name="accountType" class="select form-control-lg" required>
@@ -178,7 +180,7 @@
               </select>
             </div>
             <div class="mt-4 pt-2 text-center">
-              <button type="button" class="btn btn-primary btn-lg" id="createAccountButton">Create Account</button>        
+              <button type="button" class="btn btn-primary btn-lg" id="createAccountButton">Create Account</button>
             </div>
             </form>
           </div>
@@ -186,7 +188,7 @@
       </div>
     </section>
   </main>
-  
+
 
 
   <!-- ======= Footer ======= -->
